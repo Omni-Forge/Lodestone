@@ -70,6 +70,10 @@ cd lodestone
 cargo build --release
 ```
 
+### WARNING
+
+In production usage replace all keys and certs with your own these are in the repo for convenience purposes and should not be used on public instances or for any serious deployment
+
 ### Basic Usage
 
 1. **Start the server**:
