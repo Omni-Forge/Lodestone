@@ -1,0 +1,22 @@
+[server]
+host = "0.0.0.0"
+port = 8080
+
+[security]
+jwt_secret = "your-secret-key"
+cert_path = "certs/server.crt"
+key_path = "certs/server.key"
+
+[raft]
+node_id = 1
+peers = [2, 3]
+election_timeout = 1000
+heartbeat_interval = 100
+
+[circuit_breaker]
+failure_threshold = 5
+reset_timeout = 30
+
+[rate_limit]
+requests_per_minute = 60
+burst = 5

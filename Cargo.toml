@@ -1,0 +1,39 @@
+[package]
+name = "Lodestone"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.36", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }  # Added serde feature
+axum = { version = "0.7.9", features = ["ws", "macros"] }
+reqwest = "0.11"
+tower = { version = "0.4", features = ["full"] }
+tower-http = { version = "0.5", features = ["full"] }
+hyper = { version = "1.1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+async-trait = "0.1"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+raft = "0.7"
+sled = "0.34"
+uuid = { version = "1.7", features = ["v4", "serde"] }
+rustls = "0.21"
+rustls-pemfile = "1.0"
+tokio-rustls = "0.24"
+jsonwebtoken = "9.2"
+dashmap = "5.5"
+futures = "0.3"
+tokio-tungstenite = "0.21"
+tower-layer = "0.3"
+slog = "2.7"
+slog-async = "2.8"
+slog-term = "2.9"
+bytes = "1.5"
+prost = "0.12"
+moka = { version = "0.12", features = ["future"] }
+config = "0.11"
+rand = "0.8"  # Added missing rand dependency
+tower-service = "0.3"  # Added for tower service traits
