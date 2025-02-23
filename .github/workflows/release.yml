@@ -9,11 +9,9 @@ env:
   RUST_BACKTRACE: full
   OPENSSL_STATIC: true
   OPENSSL_NO_VENDOR: false
-  # Add debug info for better backtraces
   CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_DEBUG: true
-  # Force protobuf to use bundled protoc
-  PROTOC: ""
-  PROTOC_NO_VENDOR: false
+  # For cross compilation pkg-config
+  PKG_CONFIG_ALLOW_CROSS: 1
 
 jobs:
   release:
@@ -60,12 +58,13 @@ jobs:
         with:
           targets: ${{ matrix.platform.target }}
 
-      - name: Install Linux dependencies
+      - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             musl-tools \
+            musl-dev \
             gcc-aarch64-linux-gnu \
             gcc-riscv64-linux-gnu \
             pkg-config \
@@ -75,11 +74,32 @@ jobs:
             clang \
             lld
 
+      # Set up musl-cross OpenSSL for Linux targets
+      - name: Setup OpenSSL for musl targets
+        if: contains(matrix.platform.target, 'musl')
+        run: |
+          # Install OpenSSL for musl
+          wget https://www.openssl.org/source/openssl-3.1.0.tar.gz
+          tar xzf openssl-3.1.0.tar.gz
+          cd openssl-3.1.0
+          
+          # Configure and install OpenSSL for musl
+          CC="musl-gcc -fPIC" ./Configure no-shared no-async linux-x86_64
+          make -j$(nproc)
+          sudo make install
+          
+          # Set OpenSSL env vars
+          echo "OPENSSL_DIR=/usr/local/ssl" >> $GITHUB_ENV
+          echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/usr/local/ssl/lib/pkgconfig" >> $GITHUB_ENV
+
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
           brew install openssl@3
           echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=$(brew --prefix openssl@3)/lib" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
 
       - name: Install Windows dependencies
         if: runner.os == 'Windows'
@@ -101,12 +121,11 @@ jobs:
       - name: Generate Cargo.lock
         run: cargo generate-lockfile
 
-      - name: Set cross-compilation environment for Linux targets
+      - name: Set cross-compilation environment
         if: matrix.platform.cross
         run: |
-          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=rust-lld" >> $GITHUB_ENV
-          echo "CC_x86_64_unknown_linux_musl=clang" >> $GITHUB_ENV
-          echo "AR_x86_64_unknown_linux_musl=llvm-ar" >> $GITHUB_ENV
+          echo "CC_x86_64_unknown_linux_musl=musl-gcc" >> $GITHUB_ENV
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc" >> $GITHUB_ENV
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
           echo "CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
           echo "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=riscv64-linux-gnu-gcc" >> $GITHUB_ENV
@@ -119,6 +138,9 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: "--release --locked"
           strip: true
+        env:
+          OPENSSL_STATIC: true
+          OPENSSL_NO_VENDOR: false
 
       - name: Publish artifacts and release
         uses: houseabsolute/actions-rust-release@v0
