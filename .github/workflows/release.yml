@@ -1,4 +1,4 @@
-name: Release
+name: Release (Debug)
 on:
   push:
     branches:
@@ -10,8 +10,10 @@ env:
   OPENSSL_STATIC: true
   OPENSSL_NO_VENDOR: false
   CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_DEBUG: true
-  # For cross compilation pkg-config
   PKG_CONFIG_ALLOW_CROSS: 1
+  # Enable GitHub Actions Debug Logging
+  ACTIONS_RUNNER_DEBUG: true
+  ACTIONS_STEP_DEBUG: true
 
 jobs:
   release:
@@ -48,19 +50,45 @@ jobs:
     runs-on: ${{ matrix.platform.runs-on }}
     
     steps:
+      - name: Debug Info - Start
+        run: |
+          echo "Starting job with following environment:"
+          env
+          echo "Current directory: $(pwd)"
+          echo "Disk space:"
+          df -h
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Debug Info - Post Checkout
+        run: |
+          echo "Repository contents:"
+          ls -la
+          echo "Git status:"
+          git status
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform.target }}
 
+      - name: Debug Info - Rust Setup
+        run: |
+          echo "Rust version:"
+          rustc --version
+          cargo --version
+          echo "Rust target list:"
+          rustc --print target-list
+          echo "Cargo config:"
+          cat $HOME/.cargo/config || echo "No cargo config found"
+
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: |
+          set -ex
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             musl-tools \
@@ -73,74 +101,145 @@ jobs:
             make \
             clang \
             lld
+          
+          echo "Installed packages:"
+          dpkg -l | grep -E 'musl|gcc|ssl|perl|make|clang|lld'
 
-      # Set up musl-cross OpenSSL for Linux targets
+      - name: Debug Info - System Libraries
+        if: runner.os == 'Linux'
+        run: |
+          echo "System libraries:"
+          ldconfig -p
+          echo "pkg-config paths:"
+          pkg-config --debug 2>&1
+          echo "Current include paths:"
+          echo | gcc -E -Wp,-v -
+          echo "Current library paths:"
+          gcc -print-search-dirs
+
       - name: Setup OpenSSL for musl targets
         if: contains(matrix.platform.target, 'musl')
         run: |
-          # Install OpenSSL for musl
+          set -ex
+          echo "Starting OpenSSL setup..."
+          
+          # Download and verify OpenSSL
           wget https://www.openssl.org/source/openssl-3.1.0.tar.gz
+          echo "OpenSSL downloaded, checking contents:"
+          tar tvf openssl-3.1.0.tar.gz
+          
+          # Extract
           tar xzf openssl-3.1.0.tar.gz
           cd openssl-3.1.0
           
-          # Configure and install OpenSSL for musl
-          CC="musl-gcc -fPIC" ./Configure no-shared no-async linux-x86_64
-          make -j$(nproc)
-          sudo make install
+          echo "OpenSSL source contents:"
+          ls -la
           
-          # Set OpenSSL env vars
+          # Configure OpenSSL
+          echo "Configuring OpenSSL..."
+          CC="musl-gcc -fPIC" ./Configure \
+            no-shared \
+            no-async \
+            no-engine \
+            no-dso \
+            linux-x86_64 || exit 1
+          
+          # Check configuration results
+          echo "OpenSSL configuration results:"
+          cat Makefile
+          
+          echo "Building OpenSSL..."
+          make -j$(nproc) V=1 || exit 1
+          
+          echo "Installing OpenSSL..."
+          sudo make install_sw || exit 1
+          
+          echo "Checking OpenSSL installation..."
+          ls -la /usr/local/ssl/lib/
+          ls -la /usr/local/ssl/include/
+          
+          # Verify static libraries exist
+          if [ ! -f "/usr/local/ssl/lib/libssl.a" ]; then
+            echo "Error: libssl.a not found"
+            exit 1
+          fi
+          if [ ! -f "/usr/local/ssl/lib/libcrypto.a" ]; then
+            echo "Error: libcrypto.a not found"
+            exit 1
+          fi
+          
+          echo "Setting up environment variables..."
           echo "OPENSSL_DIR=/usr/local/ssl" >> $GITHUB_ENV
           echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
           echo "PKG_CONFIG_PATH=/usr/local/ssl/lib/pkgconfig" >> $GITHUB_ENV
+          
+          echo "OpenSSL setup complete"
+          
+          # Verify pkg-config can find OpenSSL
+          echo "Verifying pkg-config setup:"
+          pkg-config --libs openssl || echo "pkg-config failed to find openssl"
+          pkg-config --cflags openssl || echo "pkg-config failed to find openssl"
 
-      - name: Install macOS dependencies
-        if: runner.os == 'macOS'
+      - name: Debug Info - Pre Build
         run: |
-          brew install openssl@3
-          echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
-          echo "OPENSSL_LIB_DIR=$(brew --prefix openssl@3)/lib" >> $GITHUB_ENV
-          echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
-
-      - name: Install Windows dependencies
-        if: runner.os == 'Windows'
-        run: |
-          choco install openssl
-          echo "OPENSSL_ROOT_DIR=C:/Program Files/OpenSSL-Win64" >> $GITHUB_ENV
-          echo "OPENSSL_LIB_DIR=C:/Program Files/OpenSSL-Win64/lib" >> $GITHUB_ENV
-          echo "OPENSSL_INCLUDE_DIR=C:/Program Files/OpenSSL-Win64/include" >> $GITHUB_ENV
-
-      - name: Cache dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ matrix.platform.target }}-${{ hashFiles('**/Cargo.lock') }}
+          echo "Environment variables:"
+          env
+          echo "Current directory structure:"
+          ls -R
+          echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
+          echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
+          if [ -d "/usr/local/ssl" ]; then
+            echo "OpenSSL installation:"
+            ls -R /usr/local/ssl
+          fi
 
       - name: Generate Cargo.lock
-        run: cargo generate-lockfile
+        run: |
+          set -ex
+          cargo generate-lockfile
+          echo "Cargo.lock contents:"
+          cat Cargo.lock
 
       - name: Set cross-compilation environment
         if: matrix.platform.cross
         run: |
+          set -ex
+          echo "Setting up cross-compilation environment..."
           echo "CC_x86_64_unknown_linux_musl=musl-gcc" >> $GITHUB_ENV
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc" >> $GITHUB_ENV
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
           echo "CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
           echo "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=riscv64-linux-gnu-gcc" >> $GITHUB_ENV
           echo "CC_riscv64gc_unknown_linux_gnu=riscv64-linux-gnu-gcc" >> $GITHUB_ENV
+          
+          echo "Cross-compilation environment:"
+          env | grep -E 'CC_|CARGO_TARGET'
 
       - name: Build binary
         uses: houseabsolute/actions-rust-cross@v1
         with:
           command: build
           target: ${{ matrix.platform.target }}
-          args: "--release --locked"
+          args: "--release --locked -v"
           strip: true
         env:
           OPENSSL_STATIC: true
           OPENSSL_NO_VENDOR: false
+          OPENSSL_LIB_DIR: /usr/local/ssl/lib
+          OPENSSL_INCLUDE_DIR: /usr/local/ssl/include
+          PKG_CONFIG_PATH: /usr/local/ssl/lib/pkgconfig
+          RUST_BACKTRACE: 1
+          RUST_LOG: debug
+
+      - name: Debug Info - Post Build
+        run: |
+          echo "Build outputs:"
+          ls -R target/
+          echo "Final environment:"
+          env
+          echo "System status:"
+          free -h || true
+          df -h
 
       - name: Publish artifacts and release
         uses: houseabsolute/actions-rust-release@v0
@@ -148,3 +247,13 @@ jobs:
           executable-name: Lodestone
           target: ${{ matrix.platform.target }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Debug Info - Final
+        if: always()
+        run: |
+          echo "Job completed with status: $?"
+          echo "Final directory state:"
+          ls -R
+          echo "Final system status:"
+          df -h
+          free -h || true
