@@ -57,12 +57,15 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ matrix.platform.target }}-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Generate Cargo.lock
+        run: cargo generate-lockfile
+
       - name: Build binary
         uses: houseabsolute/actions-rust-cross@v1
         with:
           command: build
           target: ${{ matrix.platform.target }}
-          args: "--locked --release"
+          args: "--release"
           strip: true
 
       - name: Publish artifacts and release
