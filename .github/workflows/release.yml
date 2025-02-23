@@ -8,6 +8,11 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  OPENSSL_STATIC: true
+  OPENSSL_NO_VENDOR: false
+  # Force openssl-sys to use vendored OpenSSL
+  OPENSSL_LIB_DIR: /usr/lib
+  OPENSSL_INCLUDE_DIR: /usr/include
 
 jobs:
   release:
