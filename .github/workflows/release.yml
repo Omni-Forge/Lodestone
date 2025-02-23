@@ -124,64 +124,11 @@ jobs:
         if: contains(matrix.platform.target, 'musl')
         run: |
           set -ex
-          echo "Starting OpenSSL setup..."
+          sudo apt-get update
+          sudo apt-get install -y musl-dev musl-tools
           
-          # Download and verify OpenSSL
-          wget https://www.openssl.org/source/openssl-3.1.0.tar.gz
-          echo "OpenSSL downloaded, checking contents:"
-          tar tvf openssl-3.1.0.tar.gz
-          
-          # Extract
-          tar xzf openssl-3.1.0.tar.gz
-          cd openssl-3.1.0
-          
-          echo "OpenSSL source contents:"
-          ls -la
-          
-          # Configure OpenSSL
-          echo "Configuring OpenSSL..."
-          CC="musl-gcc -fPIC" ./Configure \
-            no-shared \
-            no-async \
-            no-engine \
-            no-dso \
-            linux-x86_64 || exit 1
-          
-          # Check configuration results
-          echo "OpenSSL configuration results:"
-          cat Makefile
-          
-          echo "Building OpenSSL..."
-          make -j$(nproc) V=1 || exit 1
-          
-          echo "Installing OpenSSL..."
-          sudo make install_sw || exit 1
-          
-          echo "Checking OpenSSL installation..."
-          ls -la /usr/local/ssl/lib/
-          ls -la /usr/local/ssl/include/
-          
-          # Verify static libraries exist
-          if [ ! -f "/usr/local/ssl/lib/libssl.a" ]; then
-            echo "Error: libssl.a not found"
-            exit 1
-          fi
-          if [ ! -f "/usr/local/ssl/lib/libcrypto.a" ]; then
-            echo "Error: libcrypto.a not found"
-            exit 1
-          fi
-          
-          echo "Setting up environment variables..."
-          echo "OPENSSL_DIR=/usr/local/ssl" >> $GITHUB_ENV
           echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=/usr/local/ssl/lib/pkgconfig" >> $GITHUB_ENV
-          
-          echo "OpenSSL setup complete"
-          
-          # Verify pkg-config can find OpenSSL
-          echo "Verifying pkg-config setup:"
-          pkg-config --libs openssl || echo "pkg-config failed to find openssl"
-          pkg-config --cflags openssl || echo "pkg-config failed to find openssl"
+          echo "OPENSSL_NO_VENDOR=0" >> $GITHUB_ENV
 
       - name: Debug Info - Pre Build
         run: |
