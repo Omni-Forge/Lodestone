@@ -5,6 +5,17 @@ on:
     branches: [ "release" ]
   pull_request:
     branches: [ "release" ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (leave empty to use Cargo.toml version)'
+        required: false
+        type: string
+      skip_version_check:
+        description: 'Skip version check'
+        required: false
+        type: boolean
+        default: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -21,6 +32,7 @@ jobs:
       
       - name: Get latest release version
         id: get_release
+        if: ${{ !inputs.skip_version_check }}
         run: |
           latest=$(gh api repos/${{ github.repository }}/releases/latest --jq .tag_name || echo "v0.0.0")
           echo "LATEST_VERSION=${latest#v}" >> $GITHUB_ENV
@@ -30,14 +42,21 @@ jobs:
       - name: Get current version
         id: get_version
         run: |
-          current=$(grep -m1 'version = "' Cargo.toml | cut -d '"' -f2)
-          echo "CURRENT_VERSION=${current}" >> $GITHUB_ENV
-          echo "version=${current}" >> $GITHUB_OUTPUT
+          if [ "${{ inputs.version }}" != "" ]; then
+            echo "CURRENT_VERSION=${{ inputs.version }}" >> $GITHUB_ENV
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            current=$(grep -m1 'version = "' Cargo.toml | cut -d '"' -f2)
+            echo "CURRENT_VERSION=${current}" >> $GITHUB_ENV
+            echo "version=${current}" >> $GITHUB_OUTPUT
+          fi
           
       - name: Check if release needed
         id: check
         run: |
-          if [ "${{ env.CURRENT_VERSION }}" != "${{ env.LATEST_VERSION }}" ]; then
+          if [ "${{ inputs.skip_version_check }}" = "true" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          elif [ "${{ env.CURRENT_VERSION }}" != "${{ env.LATEST_VERSION }}" ]; then
             echo "should_release=true" >> $GITHUB_OUTPUT
           else
             echo "should_release=false" >> $GITHUB_OUTPUT
