@@ -1,8 +1,8 @@
+<div align="right">
+<img align="right" src="https://github.com/user-attachments/assets/0396c028-f92c-4fbe-9b0e-b142d12144d1" alt="Lodestone Logo" width="200"/>
+</div>
+
 # Lodestone
-
-<div align="center">
-
-![Lodestone Logo](assets/logo.png)
 
 [![Rust](https://github.com/yourusername/lodestone/actions/workflows/rust.yml/badge.svg)](https://github.com/yourusername/lodestone/actions/workflows/rust.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -10,7 +10,6 @@
 [![Documentation](https://docs.rs/lodestone/badge.svg)](https://docs.rs/lodestone)
 
 A high-performance, distributed service discovery and routing system written in Rust.
-</div>
 
 ## Features
 
