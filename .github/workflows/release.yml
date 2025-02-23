@@ -65,14 +65,31 @@ jobs:
           # Install target-specific dependencies
           case "${{ matrix.platform.target }}" in
             "riscv64gc-unknown-linux-gnu")
+              # Install RISC-V GNU toolchain
               sudo apt-get install -y --no-install-recommends \
                 gcc-riscv64-linux-gnu \
                 g++-riscv64-linux-gnu \
-                libc6-dev-riscv64-cross \
-                libssl-dev:riscv64
-              echo "OPENSSL_DIR=/usr/lib/riscv64-linux-gnu" >> $GITHUB_ENV
-              echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
-              echo "PKG_CONFIG_PATH=/usr/lib/riscv64-linux-gnu/pkgconfig" >> $GITHUB_ENV
+                libc6-dev-riscv64-cross
+              
+              # Set up cross-compilation environment for OpenSSL
+              export OPENSSL_VERSION="3.0.13"
+              wget https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
+              tar xzf openssl-${OPENSSL_VERSION}.tar.gz
+              cd openssl-${OPENSSL_VERSION}
+              
+              # Configure and build OpenSSL for RISC-V
+              ./Configure linux64-riscv64 --prefix=/usr/riscv64-linux-gnu \
+                --openssldir=/usr/riscv64-linux-gnu/openssl shared
+              make -j$(nproc)
+              sudo make install
+              cd ..
+              
+              # Set environment variables
+              echo "OPENSSL_DIR=/usr/riscv64-linux-gnu" >> $GITHUB_ENV
+              echo "OPENSSL_INCLUDE_DIR=/usr/riscv64-linux-gnu/include" >> $GITHUB_ENV
+              echo "OPENSSL_LIB_DIR=/usr/riscv64-linux-gnu/lib" >> $GITHUB_ENV
+              echo "PKG_CONFIG_PATH=/usr/riscv64-linux-gnu/lib/pkgconfig" >> $GITHUB_ENV
+              echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
               ;;
             "aarch64-unknown-linux-musl")
               sudo apt-get install -y --no-install-recommends \
@@ -85,11 +102,30 @@ jobs:
               echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig" >> $GITHUB_ENV
               ;;
             "x86_64-unknown-linux-musl")
+              # Install musl tools and OpenSSL dev
               sudo apt-get install -y --no-install-recommends \
                 musl-tools \
-                libssl-dev
-              echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
-              echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
+                libssl-dev \
+                musl-dev
+
+              # Build OpenSSL for musl
+              export OPENSSL_VERSION="3.0.13"
+              wget https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
+              tar xzf openssl-${OPENSSL_VERSION}.tar.gz
+              cd openssl-${OPENSSL_VERSION}
+              
+              # Configure and build OpenSSL with musl-gcc
+              CC="musl-gcc -fPIC" ./Configure no-shared linux-x86_64 --prefix=/usr/local/musl
+              make -j$(nproc)
+              sudo make install_sw
+              cd ..
+              
+              # Set environment variables for OpenSSL + musl
+              echo "OPENSSL_DIR=/usr/local/musl" >> $GITHUB_ENV
+              echo "OPENSSL_INCLUDE_DIR=/usr/local/musl/include" >> $GITHUB_ENV
+              echo "OPENSSL_LIB_DIR=/usr/local/musl/lib" >> $GITHUB_ENV
+              echo "PKG_CONFIG_PATH=/usr/local/musl/lib/pkgconfig" >> $GITHUB_ENV
+              echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
               ;;
             "x86_64-unknown-freebsd")
               sudo apt-get install -y --no-install-recommends \
