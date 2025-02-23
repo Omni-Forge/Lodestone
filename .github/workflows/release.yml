@@ -19,27 +19,21 @@ jobs:
           - os-name: FreeBSD-x86_64
             runs-on: ubuntu-24.04
             target: x86_64-unknown-freebsd
-            cross: true
           - os-name: Linux-x86_64
             runs-on: ubuntu-24.04
             target: x86_64-unknown-linux-musl
-            cross: true
           - os-name: Linux-aarch64
             runs-on: ubuntu-24.04
             target: aarch64-unknown-linux-musl
-            cross: true
           - os-name: Linux-riscv64
             runs-on: ubuntu-24.04
             target: riscv64gc-unknown-linux-gnu
-            cross: true
           - os-name: Windows-x86_64
             runs-on: windows-latest
             target: x86_64-pc-windows-msvc
-            cross: false
           - os-name: macOS-x86_64
             runs-on: macOS-latest
             target: x86_64-apple-darwin
-            cross: false
 
     runs-on: ${{ matrix.platform.runs-on }}
 
@@ -54,137 +48,23 @@ jobs:
         with:
           targets: ${{ matrix.platform.target }}
 
-      - name: Install cross-compilation dependencies (Ubuntu)
+      - name: Install cross-compilation tools (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            pkg-config \
-            libssl-dev
-          
-          # Install target-specific dependencies
-          case "${{ matrix.platform.target }}" in
-            "riscv64gc-unknown-linux-gnu")
-              # Install RISC-V GNU toolchain
-              sudo apt-get install -y --no-install-recommends \
-                gcc-riscv64-linux-gnu \
-                g++-riscv64-linux-gnu \
-                libc6-dev-riscv64-cross
-              
-              # Set up cross-compilation environment for OpenSSL
-              export OPENSSL_VERSION="3.0.13"
-              wget https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
-              tar xzf openssl-${OPENSSL_VERSION}.tar.gz
-              cd openssl-${OPENSSL_VERSION}
-              
-              # Configure and build OpenSSL for RISC-V
-              ./Configure linux64-riscv64 --prefix=/usr/riscv64-linux-gnu \
-                --openssldir=/usr/riscv64-linux-gnu/openssl shared
-              make -j$(nproc)
-              sudo make install
-              cd ..
-              
-              # Set environment variables
-              echo "OPENSSL_DIR=/usr/riscv64-linux-gnu" >> $GITHUB_ENV
-              echo "OPENSSL_INCLUDE_DIR=/usr/riscv64-linux-gnu/include" >> $GITHUB_ENV
-              echo "OPENSSL_LIB_DIR=/usr/riscv64-linux-gnu/lib" >> $GITHUB_ENV
-              echo "PKG_CONFIG_PATH=/usr/riscv64-linux-gnu/lib/pkgconfig" >> $GITHUB_ENV
-              echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
-              ;;
-            "aarch64-unknown-linux-musl")
-              # Install cross-compilation tools
-              sudo apt-get install -y --no-install-recommends \
-                gcc-aarch64-linux-gnu \
-                g++-aarch64-linux-gnu \
-                musl-tools \
-                musl-dev
-
-              # Build OpenSSL for aarch64-musl
-              export OPENSSL_VERSION="3.0.13"
-              wget https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
-              tar xzf openssl-${OPENSSL_VERSION}.tar.gz
-              cd openssl-${OPENSSL_VERSION}
-              
-              # Configure and build OpenSSL for ARM64
-              CC="aarch64-linux-gnu-gcc -fPIC" \
-              ./Configure no-shared linux-aarch64 --prefix=/usr/local/aarch64-linux-musl
-              make -j$(nproc)
-              sudo make install_sw
-              cd ..
-              
-              # Set environment variables
-              echo "OPENSSL_DIR=/usr/local/aarch64-linux-musl" >> $GITHUB_ENV
-              echo "OPENSSL_INCLUDE_DIR=/usr/local/aarch64-linux-musl/include" >> $GITHUB_ENV
-              echo "OPENSSL_LIB_DIR=/usr/local/aarch64-linux-musl/lib" >> $GITHUB_ENV
-              echo "PKG_CONFIG_PATH=/usr/local/aarch64-linux-musl/lib/pkgconfig" >> $GITHUB_ENV
-              echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
-              ;;
-            "x86_64-unknown-linux-musl")
-              # Install musl tools and OpenSSL dev
-              sudo apt-get install -y --no-install-recommends \
-                musl-tools \
-                libssl-dev \
-                musl-dev
-
-              # Install Linux headers
-              sudo apt-get install -y linux-headers-$(uname -r)
-              
-              # Build OpenSSL for musl
-              export OPENSSL_VERSION="3.0.13"
-              wget https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
-              tar xzf openssl-${OPENSSL_VERSION}.tar.gz
-              cd openssl-${OPENSSL_VERSION}
-              
-              # Configure and build OpenSSL with musl-gcc
-              CC="musl-gcc -fPIC" \
-              CFLAGS="-I/usr/include" \
-              ./Configure no-shared no-async linux-x86_64 --prefix=/usr/local/musl
-              make -j$(nproc)
-              sudo make install_sw
-              cd ..
-              
-              # Set environment variables for OpenSSL + musl
-              echo "OPENSSL_DIR=/usr/local/musl" >> $GITHUB_ENV
-              echo "OPENSSL_INCLUDE_DIR=/usr/local/musl/include" >> $GITHUB_ENV
-              echo "OPENSSL_LIB_DIR=/usr/local/musl/lib" >> $GITHUB_ENV
-              echo "PKG_CONFIG_PATH=/usr/local/musl/lib/pkgconfig" >> $GITHUB_ENV
-              echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
-              ;;
-            "x86_64-unknown-freebsd")
-              sudo apt-get install -y --no-install-recommends \
-                libssl-dev
-              echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
-              echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
-              ;;
-          esac
+            musl-tools \
+            gcc-aarch64-linux-gnu \
+            gcc-riscv64-linux-gnu \
+            protobuf-compiler
 
       - name: Install protoc (macOS)
         if: runner.os == 'macOS'
-        run: |
-          brew install protobuf
-          
-      - name: Install protoc (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get install -y protobuf-compiler
-          
+        run: brew install protobuf
+
       - name: Install protoc (Windows)
         if: runner.os == 'Windows'
-        run: |
-          choco install protoc
-          
-      - name: Install OpenSSL (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install openssl@3
-          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
-
-      - name: Install OpenSSL (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          vcpkg install openssl:x64-windows-static
-          echo "OPENSSL_DIR=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows-static" | Out-File -FilePath $env:GITHUB_ENV -Append
-          echo "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+        run: choco install protoc
 
       - name: Cache dependencies
         uses: actions/cache@v3
