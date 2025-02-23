@@ -5,8 +5,6 @@
 # Lodestone
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Crates.io](https://img.shields.io/crates/v/lodestone.svg)](https://crates.io/crates/lodestone)
-[![Documentation](https://docs.rs/lodestone/badge.svg)](https://docs.rs/lodestone)
 
 A high-performance, distributed service discovery and routing system written in Rust.
 
