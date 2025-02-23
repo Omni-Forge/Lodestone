@@ -1,5 +1,4 @@
 name: Release
-
 on:
   push:
     branches:
@@ -8,11 +7,9 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Force static linking of OpenSSL
   OPENSSL_STATIC: true
   OPENSSL_NO_VENDOR: false
-  # Force openssl-sys to use vendored OpenSSL
-  OPENSSL_LIB_DIR: /usr/lib
-  OPENSSL_INCLUDE_DIR: /usr/include
 
 jobs:
   release:
@@ -24,24 +21,30 @@ jobs:
           - os-name: FreeBSD-x86_64
             runs-on: ubuntu-24.04
             target: x86_64-unknown-freebsd
+            cross: true
           - os-name: Linux-x86_64
             runs-on: ubuntu-24.04
             target: x86_64-unknown-linux-musl
+            cross: true
           - os-name: Linux-aarch64
             runs-on: ubuntu-24.04
             target: aarch64-unknown-linux-musl
+            cross: true
           - os-name: Linux-riscv64
             runs-on: ubuntu-24.04
             target: riscv64gc-unknown-linux-gnu
+            cross: true
           - os-name: Windows-x86_64
             runs-on: windows-latest
             target: x86_64-pc-windows-msvc
+            cross: false
           - os-name: macOS-x86_64
             runs-on: macOS-latest
             target: x86_64-apple-darwin
+            cross: false
 
     runs-on: ${{ matrix.platform.runs-on }}
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -53,7 +56,7 @@ jobs:
         with:
           targets: ${{ matrix.platform.target }}
 
-      - name: Install cross-compilation tools (Linux)
+      - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -61,15 +64,27 @@ jobs:
             musl-tools \
             gcc-aarch64-linux-gnu \
             gcc-riscv64-linux-gnu \
-            protobuf-compiler
+            protobuf-compiler \
+            pkg-config \
+            libssl-dev \
+            perl \
+            make \
+            clang \
+            lld
 
-      - name: Install protoc (macOS)
+      - name: Install macOS dependencies
         if: runner.os == 'macOS'
-        run: brew install protobuf
+        run: |
+          brew install protobuf openssl@3
+          echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
 
-      - name: Install protoc (Windows)
+      - name: Install Windows dependencies
         if: runner.os == 'Windows'
-        run: choco install protoc
+        run: |
+          choco install protoc openssl
+          echo "OPENSSL_ROOT_DIR=C:/Program Files/OpenSSL-Win64" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=C:/Program Files/OpenSSL-Win64/lib" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=C:/Program Files/OpenSSL-Win64/include" >> $GITHUB_ENV
 
       - name: Cache dependencies
         uses: actions/cache@v3
@@ -83,17 +98,28 @@ jobs:
       - name: Generate Cargo.lock
         run: cargo generate-lockfile
 
+      - name: Set cross-compilation environment for Linux targets
+        if: matrix.platform.cross
+        run: |
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=rust-lld" >> $GITHUB_ENV
+          echo "CC_x86_64_unknown_linux_musl=clang" >> $GITHUB_ENV
+          echo "AR_x86_64_unknown_linux_musl=llvm-ar" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=riscv64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CC_riscv64gc_unknown_linux_gnu=riscv64-linux-gnu-gcc" >> $GITHUB_ENV
+
       - name: Build binary
         uses: houseabsolute/actions-rust-cross@v1
         with:
           command: build
           target: ${{ matrix.platform.target }}
-          args: "--release"
+          args: "--release --locked"
           strip: true
 
       - name: Publish artifacts and release
         uses: houseabsolute/actions-rust-release@v0
         with:
-          executable-name: ubi
+          executable-name: Lodestone
           target: ${{ matrix.platform.target }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
