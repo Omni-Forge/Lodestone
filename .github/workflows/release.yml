@@ -6,10 +6,14 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
-  # Force static linking of OpenSSL
+  RUST_BACKTRACE: full
   OPENSSL_STATIC: true
   OPENSSL_NO_VENDOR: false
+  # Add debug info for better backtraces
+  CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_DEBUG: true
+  # Force protobuf to use bundled protoc
+  PROTOC: ""
+  PROTOC_NO_VENDOR: false
 
 jobs:
   release:
@@ -64,7 +68,6 @@ jobs:
             musl-tools \
             gcc-aarch64-linux-gnu \
             gcc-riscv64-linux-gnu \
-            protobuf-compiler \
             pkg-config \
             libssl-dev \
             perl \
@@ -75,13 +78,13 @@ jobs:
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
-          brew install protobuf openssl@3
+          brew install openssl@3
           echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
 
       - name: Install Windows dependencies
         if: runner.os == 'Windows'
         run: |
-          choco install protoc openssl
+          choco install openssl
           echo "OPENSSL_ROOT_DIR=C:/Program Files/OpenSSL-Win64" >> $GITHUB_ENV
           echo "OPENSSL_LIB_DIR=C:/Program Files/OpenSSL-Win64/lib" >> $GITHUB_ENV
           echo "OPENSSL_INCLUDE_DIR=C:/Program Files/OpenSSL-Win64/include" >> $GITHUB_ENV
