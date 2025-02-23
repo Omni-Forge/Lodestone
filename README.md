@@ -4,7 +4,6 @@
 
 # Lodestone
 
-[![Rust](https://github.com/yourusername/lodestone/actions/workflows/rust.yml/badge.svg)](https://github.com/yourusername/lodestone/actions/workflows/rust.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Crates.io](https://img.shields.io/crates/v/lodestone.svg)](https://crates.io/crates/lodestone)
 [![Documentation](https://docs.rs/lodestone/badge.svg)](https://docs.rs/lodestone)
