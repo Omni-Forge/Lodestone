@@ -107,11 +107,14 @@ jobs:
 
       - name: Debug Info - System Libraries
         if: runner.os == 'Linux'
+        continue-on-error: true
         run: |
           echo "System libraries:"
           ldconfig -p
           echo "pkg-config paths:"
-          pkg-config --debug 2>&1
+          pkg-config --variable pc_path pkg-config || echo "Failed to get pkg-config paths"
+          echo "pkg-config debug info for openssl:"
+          pkg-config --debug openssl 2>&1 || echo "Failed to debug openssl pkg-config"
           echo "Current include paths:"
           echo | gcc -E -Wp,-v -
           echo "Current library paths:"
