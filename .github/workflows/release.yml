@@ -1,209 +1,129 @@
-name: Release (Debug)
+name: Release
+
 on:
   push:
-    branches:
-      - release
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: full
-  OPENSSL_STATIC: true
-  OPENSSL_NO_VENDOR: false
-  CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_DEBUG: true
-  PKG_CONFIG_ALLOW_CROSS: 1
-  # Enable GitHub Actions Debug Logging
-  ACTIONS_RUNNER_DEBUG: true
-  ACTIONS_STEP_DEBUG: true
+  BINARY_NAME: "Lodestone"
 
 jobs:
-  release:
-    name: Release - ${{ matrix.platform.os-name }}
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - os-name: FreeBSD-x86_64
-            runs-on: ubuntu-24.04
-            target: x86_64-unknown-freebsd
-            cross: true
-          - os-name: Linux-x86_64
-            runs-on: ubuntu-24.04
-            target: x86_64-unknown-linux-musl
-            cross: true
-          - os-name: Linux-aarch64
-            runs-on: ubuntu-24.04
-            target: aarch64-unknown-linux-musl
-            cross: true
-          - os-name: Linux-riscv64
-            runs-on: ubuntu-24.04
-            target: riscv64gc-unknown-linux-gnu
-            cross: true
-          - os-name: Windows-x86_64
-            runs-on: windows-latest
-            target: x86_64-pc-windows-msvc
-            cross: false
-          - os-name: macOS-x86_64
-            runs-on: macOS-latest
-            target: x86_64-apple-darwin
-            cross: false
-
-    runs-on: ${{ matrix.platform.runs-on }}
-    
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
     steps:
-      - name: Debug Info - Start
+      - uses: actions/checkout@v4
+      
+      - name: Get latest release version
+        id: get_release
         run: |
-          echo "Starting job with following environment:"
-          env
-          echo "Current directory: $(pwd)"
-          echo "Disk space:"
-          df -h
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Debug Info - Post Checkout
-        run: |
-          echo "Repository contents:"
-          ls -la
-          echo "Git status:"
-          git status
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform.target }}
-
-      - name: Debug Info - Rust Setup
-        run: |
-          echo "Rust version:"
-          rustc --version
-          cargo --version
-          echo "Rust target list:"
-          rustc --print target-list
-          echo "Cargo config:"
-          cat $HOME/.cargo/config || echo "No cargo config found"
-
-      - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
-        run: |
-          set -ex
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            musl-tools \
-            musl-dev \
-            gcc-aarch64-linux-gnu \
-            gcc-riscv64-linux-gnu \
-            pkg-config \
-            libssl-dev \
-            perl \
-            make \
-            clang \
-            lld
+          latest=$(gh api repos/${{ github.repository }}/releases/latest --jq .tag_name || echo "v0.0.0")
+          echo "LATEST_VERSION=${latest#v}" >> $GITHUB_ENV
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
-          echo "Installed packages:"
-          dpkg -l | grep -E 'musl|gcc|ssl|perl|make|clang|lld'
-
-      - name: Debug Info - System Libraries
-        if: runner.os == 'Linux'
-        continue-on-error: true
+      - name: Get current version
+        id: get_version
         run: |
-          echo "System libraries:"
-          ldconfig -p
-          echo "pkg-config paths:"
-          pkg-config --variable pc_path pkg-config || echo "Failed to get pkg-config paths"
-          echo "pkg-config debug info for openssl:"
-          pkg-config --debug openssl 2>&1 || echo "Failed to debug openssl pkg-config"
-          echo "Current include paths:"
-          echo | gcc -E -Wp,-v -
-          echo "Current library paths:"
-          gcc -print-search-dirs
-
-      - name: Setup OpenSSL for musl targets
-        if: contains(matrix.platform.target, 'musl')
-        run: |
-          set -ex
-          sudo apt-get update
-          sudo apt-get install -y musl-dev musl-tools
+          current=$(grep -m1 'version = "' Cargo.toml | cut -d '"' -f2)
+          echo "CURRENT_VERSION=${current}" >> $GITHUB_ENV
+          echo "version=${current}" >> $GITHUB_OUTPUT
           
-          echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
-          echo "OPENSSL_NO_VENDOR=0" >> $GITHUB_ENV
-
-      - name: Debug Info - Pre Build
+      - name: Check if release needed
+        id: check
         run: |
-          echo "Environment variables:"
-          env
-          echo "Current directory structure:"
-          ls -R
-          echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
-          echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
-          if [ -d "/usr/local/ssl" ]; then
-            echo "OpenSSL installation:"
-            ls -R /usr/local/ssl
+          if [ "${{ env.CURRENT_VERSION }}" != "${{ env.LATEST_VERSION }}" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Generate Cargo.lock
-        run: |
-          set -ex
-          cargo generate-lockfile
-          echo "Cargo.lock contents:"
-          cat Cargo.lock
+  build:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    strategy:
+      matrix:
+        include:
+          # Linux builds
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: lodestone-linux-amd64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact_name: lodestone-linux-arm64
+          # Windows builds  
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: lodestone-windows-amd64.exe
+          # macOS builds
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: lodestone-darwin-amd64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: lodestone-darwin-arm64
 
-      - name: Set cross-compilation environment
-        if: matrix.platform.cross
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation dependencies
+        if: runner.os == 'Linux' && contains(matrix.target, 'aarch64')
         run: |
-          set -ex
-          echo "Setting up cross-compilation environment..."
-          echo "CC_x86_64_unknown_linux_musl=musl-gcc" >> $GITHUB_ENV
-          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=riscv64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "CC_riscv64gc_unknown_linux_gnu=riscv64-linux-gnu-gcc" >> $GITHUB_ENV
-          
-          echo "Cross-compilation environment:"
-          env | grep -E 'CC_|CARGO_TARGET'
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build binary
-        uses: houseabsolute/actions-rust-cross@v1
-        with:
-          command: build
-          target: ${{ matrix.platform.target }}
-          args: "--release --locked -v"
-          strip: true
-        env:
-          OPENSSL_STATIC: true
-          OPENSSL_NO_VENDOR: false
-          OPENSSL_LIB_DIR: /usr/local/ssl/lib
-          OPENSSL_INCLUDE_DIR: /usr/local/ssl/include
-          PKG_CONFIG_PATH: /usr/local/ssl/lib/pkgconfig
-          RUST_BACKTRACE: 1
-          RUST_LOG: debug
-
-      - name: Debug Info - Post Build
         run: |
-          echo "Build outputs:"
-          ls -R target/
-          echo "Final environment:"
-          env
-          echo "System status:"
-          free -h || true
-          df -h
-
-      - name: Publish artifacts and release
-        uses: houseabsolute/actions-rust-release@v0
-        with:
-          executable-name: Lodestone
-          target: ${{ matrix.platform.target }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cargo build --release --target ${{ matrix.target }}
           
-      - name: Debug Info - Final
-        if: always()
+      - name: Prepare binary
+        shell: bash
         run: |
-          echo "Job completed with status: $?"
-          echo "Final directory state:"
-          ls -R
-          echo "Final system status:"
-          df -h
-          free -h || true
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp "target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}.exe" "${{ matrix.artifact_name }}"
+          else
+            cp "target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}" "${{ matrix.artifact_name }}"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
+          
+  release:
+    needs: [check-version, build]
+    runs-on: ubuntu-latest
+    if: needs.check-version.outputs.should_release == 'true'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.check-version.outputs.version }}
+        run: |
+          # Create release notes from git log
+          git log $(git describe --tags --abbrev=0 2>/dev/null || echo HEAD^)..HEAD --pretty=format:"* %s" > release_notes.txt
+          
+          # Create the release
+          gh release create "v${VERSION}" \
+            --title "Release v${VERSION}" \
+            --notes-file release_notes.txt \
+            ./lodestone-*/lodestone-*
