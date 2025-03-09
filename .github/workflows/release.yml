@@ -3,11 +3,13 @@ name: Release
 on:
   push:
     branches:
-      - release
+      - main
 
 jobs:
   check-version:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
       version: ${{ steps.check.outputs.version }}
@@ -45,6 +47,7 @@ jobs:
       runs-on: ubuntu-latest
       permissions:
         contents: write
+        packages: write
       outputs:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
       steps:
@@ -64,6 +67,8 @@ jobs:
   build-release:
     needs: [check-version, create-release]
     if: needs.check-version.outputs.should_release == 'true'
+    permissions:
+      contents: write
     strategy:
       fail-fast: false  # Continue with other builds if one fails
       matrix:
@@ -138,51 +143,80 @@ jobs:
       - name: Set binary path variables
         shell: bash
         run: |
-          echo "PACKAGE_NAME=${{ needs.check-version.outputs.package_name }}" >> $GITHUB_ENV
-          echo "FULL_BIN_PATH=${{ matrix.bin_path }}/${{ needs.check-version.outputs.package_name }}${{ matrix.extension || '' }}" >> $GITHUB_ENV
-          echo "FULL_ASSET_NAME=${{ needs.check-version.outputs.package_name }}${{ matrix.asset_name }}" >> $GITHUB_ENV
+          PACKAGE_NAME="${{ needs.check-version.outputs.package_name }}"
+          FULL_BIN_PATH="${{ matrix.bin_path }}/${PACKAGE_NAME}${{ matrix.extension || '' }}"
+          FULL_ASSET_NAME="${PACKAGE_NAME}${{ matrix.asset_name }}"
+          
+          echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+          echo "FULL_BIN_PATH=${FULL_BIN_PATH}" >> $GITHUB_ENV
+          echo "FULL_ASSET_NAME=${FULL_ASSET_NAME}" >> $GITHUB_ENV
+          
+          # Debug info
+          echo "Debug info:"
+          echo "- Package name: ${PACKAGE_NAME}"
+          echo "- Binary path: ${FULL_BIN_PATH}"
+          echo "- Asset name: ${FULL_ASSET_NAME}"
+          
+          # Verify binary exists
+          if [ -f "${FULL_BIN_PATH}" ]; then
+            echo "✅ Binary exists at: ${FULL_BIN_PATH}"
+            ls -la "${FULL_BIN_PATH}"
+          else
+            echo "❌ Binary NOT found at: ${FULL_BIN_PATH}"
+            echo "Contents of target directory:"
+            find target -type f -name "${PACKAGE_NAME}*" | sort
+          fi
       
       - name: Generate SHA256
         shell: bash
         run: |
+          # Verify binary exists again just before SHA256 generation
           if [ ! -f "$FULL_BIN_PATH" ]; then
-            echo "Binary not found at $FULL_BIN_PATH"
-            # Try to list outputs for debugging
-            find target -name "$PACKAGE_NAME" -o -name "$PACKAGE_NAME.exe" -o -name "*.wasm" | sort
+            echo "❌ ERROR: Binary still not found at $FULL_BIN_PATH"
+            echo "Searching for any binaries:"
+            find target -type f -executable -o -name "*.exe" -o -name "*.wasm" | sort
             exit 1
           fi
           
+          echo "Generating SHA256 for $FULL_BIN_PATH"
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             sha256sum "$FULL_BIN_PATH" > "$FULL_BIN_PATH.sha256"
           else
             shasum -a 256 "$FULL_BIN_PATH" > "$FULL_BIN_PATH.sha256"
           fi
+          
+          echo "SHA256 file contents:"
+          cat "$FULL_BIN_PATH.sha256"
 
       - name: Upload Binary
         uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
           asset_path: ${{ env.FULL_BIN_PATH }}
           asset_name: ${{ env.FULL_ASSET_NAME }}
           asset_content_type: application/octet-stream
+        continue-on-error: true
 
       - name: Upload SHA256
         uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
           asset_path: ${{ env.FULL_BIN_PATH }}.sha256
           asset_name: ${{ env.FULL_ASSET_NAME }}.sha256
           asset_content_type: text/plain
+        continue-on-error: true
 
   # Use cross for more complex cross-compilation targets
   cross-builds:
     needs: [check-version, create-release]
     if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -246,9 +280,17 @@ jobs:
       - name: Set variables
         run: |
           PACKAGE_NAME="${{ needs.check-version.outputs.package_name }}"
-          echo "PACKAGE_NAME=$PACKAGE_NAME" >> $GITHUB_ENV
-          echo "ASSET_NAME=$PACKAGE_NAME${{ matrix.asset_suffix }}" >> $GITHUB_ENV
-          echo "BIN_PATH=target/${{ matrix.target }}/release/$PACKAGE_NAME${{ matrix.extension || '' }}" >> $GITHUB_ENV
+          ASSET_NAME="${PACKAGE_NAME}${{ matrix.asset_suffix }}"
+          BIN_PATH="target/${{ matrix.target }}/release/${PACKAGE_NAME}${{ matrix.extension || '' }}"
+          
+          echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+          echo "ASSET_NAME=${ASSET_NAME}" >> $GITHUB_ENV
+          echo "BIN_PATH=${BIN_PATH}" >> $GITHUB_ENV
+          
+          echo "Cross-build variables:"
+          echo "- Package: ${PACKAGE_NAME}"
+          echo "- Asset name: ${ASSET_NAME}"
+          echo "- Binary path: ${BIN_PATH}"
       
       # Create Cross.toml with pre-build commands for OpenSSL
       - name: Configure cross for OpenSSL
