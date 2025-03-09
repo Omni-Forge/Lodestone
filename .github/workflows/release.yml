@@ -123,8 +123,12 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install openssl@1.1 protobuf
+          brew install openssl@1.1 protobuf@3.21
           echo "OPENSSL_DIR=$(brew --prefix openssl@1.1)" >> $GITHUB_ENV
+          # Add protoc to PATH and check version
+          echo "PATH=$(brew --prefix protobuf@3.21)/bin:$PATH" >> $GITHUB_ENV
+          brew link --force protobuf@3.21
+          protoc --version
       
       # Install OpenSSL for Linux
       - name: Install Linux dependencies
@@ -136,6 +140,8 @@ jobs:
       # Build using cargo for native targets
       - name: Build native
         uses: actions-rs/cargo@v1
+        env:
+          RUST_BACKTRACE: 1
         with:
           command: build
           args: --release --target ${{ matrix.target }}
