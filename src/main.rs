@@ -11,7 +11,10 @@ mod discovery;
 mod router;
 mod security;
 mod store;
-mod types;
+mod prelude;
+mod health;
+mod service;
+mod error;
 
 use crate::config::Settings;
 use crate::consensus::RaftNode;
@@ -19,21 +22,7 @@ use crate::discovery::ServiceRegistry;
 use crate::router::Router;
 use crate::security::TlsConfig;
 use crate::store::Store;
-use crate::types::{Result, Error};
-
-// Implement From for ConfigError using the proper path
-impl From<::config::ConfigError> for Error {
-    fn from(err: ::config::ConfigError) -> Self {
-        Error::Config(err.to_string())
-    }
-}
-
-// Implement From for std::net::AddrParseError
-impl From<std::net::AddrParseError> for Error {
-    fn from(err: std::net::AddrParseError) -> Self {
-        Error::BadRequest(err.to_string())
-    }
-}
+use crate::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -102,13 +91,13 @@ async fn main() -> Result<()> {
         let mut interval = tokio::time::interval(settings_clone.raft_heartbeat_interval());
         loop {
             interval.tick().await;
-            let mut node = raft_clone.write().await;
+            let mut _node = raft_clone.write().await;
         }
     });
 
     // Start the HTTP server
     let addr = SocketAddr::new(
-        settings.server.host.parse()?,
+        settings.server.host,
         settings.server.port,
     );
     
@@ -116,7 +105,7 @@ async fn main() -> Result<()> {
     
     // Create TcpListener
     let listener = TcpListener::bind(addr).await?;
-    let acceptor = tls_config.get_acceptor();
+    let _acceptor = tls_config.get_acceptor();
     
     serve(
         listener,

@@ -1,18 +1,18 @@
 use config::{Config, ConfigError, File};
 use serde::Deserialize;
-use std::time::Duration;
+use std::{net::IpAddr, path::PathBuf, time::Duration};
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ServerConfig {
-    pub host: String,
+    pub host: IpAddr,
     pub port: u16,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct SecurityConfig {
     pub jwt_secret: String,
-    pub cert_path: String,
-    pub key_path: String,
+    pub cert_path: PathBuf,
+    pub key_path: PathBuf,
 }
 
 #[derive(Debug, Deserialize, Clone)]

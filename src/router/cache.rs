@@ -1,6 +1,7 @@
 use std::time::Duration;
 use moka::future::Cache;
-use crate::types::Service;
+
+use crate::service::Service;
 
 pub struct RouteCache {
     cache: Cache<String, Vec<Service>>,
