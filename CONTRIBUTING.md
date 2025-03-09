@@ -49,7 +49,7 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
 
 ### Rust Styleguide
 
-* Follow the [Rust Style Guide](https://github.com/rust-dev-tools/fmt-rfcs/blob/master/guide/guide.md)
+* Follow the [Rust Style Guide](https://doc.rust-lang.org/nightly/style-guide/)
 * Run `cargo fmt` before committing
 * Ensure `cargo clippy` passes without warnings
 * Document all public functions and types
