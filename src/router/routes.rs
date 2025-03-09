@@ -9,8 +9,7 @@ use axum::{
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use crate::{
-    discovery::ServiceRegistry,
-    types::{Service, Error},
+    discovery::ServiceRegistry, error::Error, service::Service
 };
 
 pub struct Router {
@@ -65,7 +64,7 @@ impl Router {
 impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
         let status = match self {
-            Error::NotFound(_) => StatusCode::NOT_FOUND,
+            Error::ServiceNotFound(_) => StatusCode::NOT_FOUND,
             Error::BadRequest(_) => StatusCode::BAD_REQUEST,
             Error::Auth(_) => StatusCode::UNAUTHORIZED,
             Error::RateLimit => StatusCode::TOO_MANY_REQUESTS,

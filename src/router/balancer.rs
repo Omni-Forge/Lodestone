@@ -1,7 +1,7 @@
 use rand::seq::SliceRandom;
 use std::sync::Arc;
 use dashmap::DashMap;
-use crate::types::Service;
+use crate::service::Service;
 
 #[derive(Debug, Clone)]
 pub struct LoadBalancer {

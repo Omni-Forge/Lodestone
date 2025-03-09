@@ -1,5 +1,5 @@
 // src/store/mod.rs
-use crate::types::{Result, Error, Service};
+use crate::{prelude::*, service::Service};
 use sled::Db;
 use std::path::Path;
 use serde_json;
